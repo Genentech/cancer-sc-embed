@@ -1,0 +1,131 @@
+\documentclass{article}
+\usepackage{amsmath}
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2020
+
+% ready for submission
+%\usepackage{neurips_2020}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+     \usepackage[preprint]{neurips_2020}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+%     \usepackage[final]{neurips_2020}
+
+% to avoid loading the natbib package, add option nonatbib:
+     \usepackage[nonatbib]{neurips_2020}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+
+
+\title{Genentech Summer Internship 2023}
+\author{Rebecca Boiarsky}
+\date{April 2023}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+Dimensionality reduction and clustering are prototypical parts of single cell RNA-sequencing (scRNA-seq) analysis, and are meant to elucidate groups of cells that share gene expression programs and allow for differential expression analysis between cell clusters. In cancer, this step of the usual workflow is confounded by overwhelming differences between the transcriptional profiles of tumors from different patients, obscuring our ability to use typical methods (PCA, tSNE, KNN graph) to embed cells in a latent space that relates information about cell state and disease status. Instead, we find that cells separate by patient, obscuring our ability to explore cell subtypes and gene expression activity across patients. As somatic copy number events are a common occurrence in tumor samples, we hypothesize that distinct copy number events across patients drive the transcriptional profiles of their tumor cells to be starkly different, even among patients with the same disease subtype where we would expect to find shared gene activity between patients. In this work, we explore the effect of copy number variation on gene expression and demonstrate how projecting tumor cells into a ``copy number free" latent space allows for recovery of shared cell subtypes from distinct patients.
+
+Given scRNA-seq counts and copy number information $c_{ng}$ for each gene $g$ in each cell $n$ (which can be estimated from the RNA-seq data itself using the Numbat algorithm \citep{gao2023haplotype}), we propose a simple modification to scVI, a generative model of single cell gene expression \citep{lopez2018deep}, to learn ``copy number free" latents. Specifically, our proposed generative model is of the following form:\\
+\begin{align}%{ll} 
+{z_n} & {\sim {\mathrm{Normal}}\left( {0,I} \right)} \\ 
+{\ell _n} & {\sim {\mathrm{log}}\,{\mathrm{normal}}\left( {\ell _\mu ,\ell _\sigma ^2} \right)} \\ 
+{\rho _n} & { = f_w\left( {z_n,s_n} \right)} \\ 
+{w_{ng}} & {\sim {\mathrm{Gamma}}\left( {\rho _n^g,\theta } \right)} \\ 
+{y_{ng}} & {\sim {\mathrm{Poisson}}\left( {\ell _nw_{ng}c_{ng}} \right)}
+\end{align}
+
+alternative formulation, with copy number effect upstream of gene rates:
+\begin{align}%{ll} 
+{z_n} & {\sim {\mathrm{Normal}}\left( {0,I} \right)} \\ 
+{\ell _n} & {\sim {\mathrm{log}}\,{\mathrm{normal}}\left( {\ell _\mu ,\ell _\sigma ^2} \right)} \\ 
+{\rho _n} & { = f_w\left( {z_n,s_n,c_{ng}} \right)} \\ 
+{w_{ng}} & {\sim {\mathrm{Gamma}}\left( {\rho _n^g,\theta } \right)} \\ 
+{y_{ng}} & {\sim {\mathrm{Poisson}}\left( {\ell _nw_{ng}} \right)}
+\end{align}
+
+or a mrVI type of formulation, so that we get two views of the latent space, one that is ``CNA-aware" and one that is not:
+\begin{align}%{ll} 
+{\mu_n} & {\sim {\mathrm{Normal}}\left( {0,I} \right)} \\ 
+{z_n} &= f_z(\mu_n, c_{n})\\
+{\rho _n} & { = f_w\left( {z_n,b_n} \right)} \\ 
+{x_{ng}} & {\sim {\mathrm{Negative Binomial}}\left({\ell _n \rho_{ng}, \theta_{ng}}\right)} \\ 
+\end{align}
+
+Since the affect of CNVs on gene expression is explicitly modeled in equation 6, the latent $z$s which capture the biological variation amongst cells should now be free of copy number effects.
+
+\section{Background}
+\begin{itemize}
+    \item reference for understanding the mechanisms that drive copy number alterations: \cite{hastings2009mechanisms}
+\end{itemize}
+
+\section{Related Work / Baselines}
+
+There are two different categories of related work/baselines which we could use to try to "correct" for the patient-specific structure often observed in low-dimensional embeddings of tumor samples:
+\begin{enumerate}
+
+    \item Batch correct on patient ID
+    \begin{itemize}
+        \item ScPhere \citep{ding2021deep}
+        \begin{itemize}
+        \item  we minimize the distortion by embedding cells to a lower-dimensional hypersphere instead of a low-dimensional Euclidean space, using von Mises–Fisher (vMF) distributions on hyperspheres as the posteriors for the latent variables... points are no longer forced to cluster in the center of the latent space. 
+        \item batch effect experiments: applied scPhere to a dataset of 301,749 cells from the colon mucosa of 18 patients with ulcerative colitis (UC) and 12 healthy individuals. 
+        \item for their experiments which set patient ID as the sole batch variable: compared performance to 3 leading batch-correction methods—Harmony, LIGER, and Seurat3 CCA5
+        \item can correct for multiple confounding factors simultaneously, which is not readily possible with many other batch-correction methods
+        \end{itemize} 
+    \end{itemize}
+
+    
+    \item Separate latents which are shared vs. unique  across patient samples
+    \begin{itemize}
+        \item multiGroupVI \citep{weinberger2022disentangling} finds shared and group-specific latent factors using a VAE approach (non-linear)
+        \item multi-study factor analysis (MSFA) \citep{de2019multi} and generalizable matrix decomposition framework (GMDF) \citep{jerby2021pan} explicitly separate shared and group-specific variations in gene expression data, using linear latent factors.
+        \item MrVI \citep{boyeau2022deep} separates latent factors into a ``sample unaware" $u$ and ``sample aware" $z$ to allow for a latent representation of the biology of a cell that is sample free, as well as sample aware, and also for counterfactual querying of a cell state from sample $a$ for sample $b$, which they use to calculate differences between samples. One significant change from scVI \citep{lopez2018deep} is that they use a linear decoder, so that distances in the latent space map to distances in gene expression (curious if this is really necessary). 
+    \end{itemize}
+
+    
+
+    
+
+\end{enumerate}
+
+\section{Data}
+    \begin{itemize}
+        \item If we run Numbat to get copy number estimates, then there is a lot of data we could use (any publicly available single cell cancer data). I would recommend starting with the multiple myeloma (MM) single cell data that I published, since I know the quirks of that data well \citep{boiarsky2022single}.
+        \item We should also show results where we know the ground truth copy number based on DNA. We would expect the model to perform best on this data, since there is less noise in the copy number profiles. For this, we can use the ground truth labeled datasets used in Numbat:
+        \begin{itemize}
+            \item nine gastric cancer cell lines \citep{andor2020joint}, containing 8824 scDNA profiles and 28000 scRNA profiles (not exactly sure if we would observe separate clusters based on copy number here, since this is cell line and not patient data, but still interesting to report how the latent space changes if we correct for copy number in a simpler, non-patient setting).
+            \item 5 MM samples with paired bulk WGS + scRNA-seq \citep{liu2021co}. \textbf{(This data is not where they say it should be on GEO, so I will reach out to authors if we may want to use it).}
+        \end{itemize}
+    \end{itemize}
+
+
+\section{Evaluation}
+\begin{itemize}
+    \item For cancers with known subtypes, we would expect to see cells cluster by subtype rather than by patient (eg. in MM there are subtypes characterized by different translocation events which exhibit distinct transcriptional patterns)
+    \item We would also hope to find that cells cluster according to activity of gene programs (eg. discovered by NMF or DIALOGUE, or 1000 tumors paper from \cite{gavish2023hallmarks}). In MM, when we clustered individual tumors, we found that cells clustered according to their expression of unique NMF gene signatures, and multiple different patient had the same cell subtypes present (Fig. 4c of \cite{boiarsky2022single}). In our CNV-free latent space, we would hope to see that cells which are from different tumors but share expression of the same NMF gene signatures are now close to each other (maybe we can't expect cells from different patient subtypes to merge, but at least from different patients within the same subtype)
+    \item UMAP plots may not be an ideal way to see our learned embeddings $z$, since they mostly preserve local distances, and cells from the same patient will likely still be more similar to each other even after correcting for CNVs. Hierarchical clustering may be a better choice? Other options?
+\end{itemize}
+
+\section{Questions}
+\begin{itemize}
+    \item Would a multiGroupVI approach work well enough for this problem, despite not including a copy number specific change to the generative model?
+\end{itemize}
+
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+\end{document}
